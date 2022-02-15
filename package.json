@@ -1,0 +1,40 @@
+{
+  "name": "geocoder",
+  "version": "0.0.1",
+  "description": "A project generated from aunty's preact project template.",
+  "license": "MIT",
+  "private": true,
+  "contributors": [
+    "Andrew Kesper <kesper.andrew@abc.net.au>"
+  ],
+  "aunty": {
+    "type": "preact"
+  },
+  "scripts": {
+    "start": "aunty serve",
+    "test": "aunty test"
+  },
+  "abc": {
+    "css": {
+      "libraryDir": "./node_modules/@abcaustralia/nucleus/css",
+      "logVariables": "false"
+    }
+  },
+  "devDependencies": {
+    "@abcnews/aunty": "^12.0.3",
+    "@types/jest": "^27.4.0",
+    "@types/latlon-geohash": "^1.1.1",
+    "@types/webpack-env": "^1.16.3",
+    "html-looks-like": "^1.0.3",
+    "preact-render-to-string": "^5.1.19"
+  },
+  "dependencies": {
+    "@abcnews/alternating-case-to-object": "^3.0.2",
+    "@abcnews/env-utils": "^3.0.0",
+    "@abcnews/mount-utils": "^2.0.0",
+    "latlon-geohash": "^1.1.0",
+    "metaphone": "^1.0.6",
+    "minisearch": "^3.2.0",
+    "preact": "^10.6.5"
+  }
+}

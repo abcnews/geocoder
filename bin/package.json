@@ -1,0 +1,25 @@
+{
+  "name": "bin",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "esbuild": "^0.14.20",
+    "latlon-geohash": "^1.1.0",
+    "metaphone": "^1.0.6",
+    "postgres": "^2.0.0-beta.11",
+    "ts-eager": "^2.0.2",
+    "typescript": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^8.2.0",
+    "@types/latlon-geohash": "^1.1.1"
+  }
+}
