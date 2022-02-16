@@ -19,8 +19,8 @@ function numberOrString(text: string): number | string {
 }
 
 async function data() {
-  let dataDirectory = resolve('../data');
-  let parentDirectory = resolve('..');
+  let dataDirectory = resolve(__dirname, '../data');
+  let parentDirectory = resolve(__dirname, '..');
   fs.mkdirSync(dataDirectory, { mode: 0o755, recursive: true });
   let outputStreams = new Map<string, fs.WriteStream>();
   let outputGroups = new Set<string>();
