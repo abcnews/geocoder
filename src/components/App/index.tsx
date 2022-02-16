@@ -23,7 +23,7 @@ const App: FunctionalComponent<AppProps> = props => {
     }
   };
   useEffect(() => {
-    geocode(input, 10, result => {
+    geocode(input, 10).then(result => {
       if (result.input === input) {
         setResult(result);
         console.log({ input, group: result?.group, duration: result?.duration });
