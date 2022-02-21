@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geocode demo</title>
+  <script src="dist/geocode.global.js"></script>
+  <style>
+    #container {
+      line-height: 1.33;
+    }
+    #container * {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      box-sizing: border-box;
+      font-family: sans-serif;
+    }
+    input {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      font-size: 16px;
+      width: 100%;
+      padding: 0.5em 1em;
+    }
+    li {
+      margin: 1em 0;
+    }
+    .address {
+      font-weight: 600;
+      margin-bottom: 0.25em;
+    }
+    .details {
+      color: gray;
+      font-size: 12px;
+    }
+    .details a {
+      color: currentColor;
+    }
+    .details span {
+      display: inline-block;
+      margin-right: 0.5em;
+    }
+    .details span:last-of-type {
+      margin-right: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Enter address" /></div>
+    <div id="output"></div>
+  </div>
+  <script>
+    let input = document.querySelector('input');
+    let output = document.querySelector('#output');
+    let lastQuery = '';
+    function doGeocode() {
+      let query = document.querySelector('input').value;
+      if (query === lastQuery) return;
+      lastQuery = query;
+      __GEOCODE__.default(query, 10).then(result => {
+        console.log(result);
+        output.innerHTML = `
+          <ol>
+            ${result.results.map(r => `
+              <li>
+                <div class="address">${r.address}</div>
+                <div class="details">
+                  <span><a href="https://maps.google.com.au/?q=${r.latitude},${r.longitude}" target="_blank">Map</a></span>
+                  <span>Lat: ${r.latitude}</span> <span>Lon: ${r.longitude}</span>
+                  <span>Score: ${+r.score.toFixed(2)}</span>
+                </div>
+              </li>
+            `).join('\n')}
+          </ol>
+        `;
+      });
+    }
+    doGeocode();
+    input.addEventListener('keyup', doGeocode);
+    input.addEventListener('change', doGeocode);
+  </script>
+</body>
+</html>

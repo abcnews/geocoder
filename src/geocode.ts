@@ -1,4 +1,4 @@
-import type { Street } from '../types';
+import type { Street } from './types';
 import MiniSearch, { SearchResult as MiniSearchResult } from 'minisearch';
 import Geohash from 'latlon-geohash';
 //@ts-ignore - missing types

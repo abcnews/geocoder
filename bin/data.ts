@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx ts-eager
 
-import { Street, Block, AddressNumber } from '../types';
+import { Street, Block, AddressNumber } from '../src/types';
 import { resolve } from 'node:path';
 import fs from 'node:fs';
 import { once } from 'events';
