@@ -1,7 +1,7 @@
 {
 	"name": "geocoder",
 	"version": "0.2.0",
-	"description": "A project generated from aunty's preact project template.",
+	"description": "Browser-based geocoder for Australian addresses.",
 	"license": "MIT",
 	"private": true,
   "author": "Australian Broadcasting Corporation",
