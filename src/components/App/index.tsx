@@ -5,15 +5,6 @@ import geocode, { GeocodeResult } from '../../geocode';
 
 export type AppProps = {};
 
-const states = new Set(['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT']);
-
-const prettyAddress = (address: string): string => {
-  return address.toUpperCase().replace(/(^|[^A-Z])(['A-Z]+)/g, (entireMatch, separator, word) => {
-    let prettyWord = states.has(word) ? word : word.substring(0, 1)+(word.substring(1).toLowerCase());
-    return separator+prettyWord;
-  });
-}
-
 const App: FunctionalComponent<AppProps> = props => {
   let [input, setInput] = useState('');
   let [result, setResult] = useState<GeocodeResult | null>(null);
@@ -37,7 +28,7 @@ const App: FunctionalComponent<AppProps> = props => {
         <ol>
           { result.results.map(r => (
             <li>
-              <div class="address">{prettyAddress(r.address)}</div>
+              <div class="address">{r.address}</div>
               <div class="details"><span><a href={`https://maps.google.com.au/?q=${r.latitude},${r.longitude}`} target="_blank">Map</a></span> <span>Lat: {r.latitude}</span> <span>Lon: {r.longitude}</span> <span>Score: {+r.score.toFixed(2)}</span></div>
             </li>
           )) }

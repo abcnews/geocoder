@@ -160,6 +160,15 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
   });
 }
 
+const states = new Set(['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT']);
+
+const prettyAddress = (address: string): string => {
+  return address.toUpperCase().replace(/(^|[^A-Z])(['A-Z]+)/g, (entireMatch, separator, word) => {
+    let prettyWord = states.has(word) ? word : word.substring(0, 1)+(word.substring(1).toLowerCase());
+    return separator+prettyWord;
+  });
+}
+
 export default function geocode (input: string, limit: number): Promise<GeocodeResult> {
   return new Promise(resolve => {
     let startTime = Date.now();
@@ -219,7 +228,7 @@ export default function geocode (input: string, limit: number): Promise<GeocodeR
         let doc = searchIndexDocuments[miniSearchResult.id];
         let g = Geohash.decode(doc.geohash);
         result.results.push({
-          address: doc.address,
+          address: prettyAddress(doc.address),
           latitude: g.lat,
           longitude: g.lon,
           score: miniSearchResult.score,
