@@ -1,9 +1,9 @@
 {
-	"name": "geocoder",
-	"version": "0.2.0",
-	"description": "Browser-based geocoder for Australian addresses.",
-	"license": "MIT",
-	"private": true,
+  "name": "geocoder",
+  "version": "0.2.0",
+  "description": "Browser-based geocoder for Australian addresses.",
+  "license": "MIT",
+  "private": true,
   "author": "Australian Broadcasting Corporation",
   "contributors": [
     "Andrew Kesper <kesper.andrew@abc.net.au>"
@@ -12,21 +12,23 @@
     "type": "git",
     "url": "git+https://github.com/abcnews/geocoder.git"
   },
-	"main": "dist/geocode.js",
-	"module": "dist/geocode.mjs",
-	"types": "dist/geocode.d.ts",
-	"scripts": {
-		"build": "tsup src/geocode.ts --env.NODE_ENV production --format=esm,cjs,iife --minify --globalName=__GEOCODE__ --dts",
-		"example": "http-server . -p 9994 --log-ip -c-1 -o example.html"
-	},
-	"devDependencies": {
-		"@types/latlon-geohash": "^1.1.1",
-		"http-server": "^14.1.0",
-		"tsup": "^5.11.13"
-	},
-	"dependencies": {
-		"latlon-geohash": "^1.1.0",
-		"metaphone": "^1.0.6",
-		"minisearch": "^3.3.0"
-	}
+  "main": "dist/geocode.js",
+  "module": "dist/geocode.mjs",
+  "types": "dist/geocode.d.ts",
+  "scripts": {
+    "build": "tsup src/geocode.ts --env.NODE_ENV production --format=esm,cjs,iife --minify --globalName=__GEOCODE__ --dts",
+    "dev": "tsup src/geocode.ts --watch --format=esm,cjs,iife --globalName=__GEOCODE__ --dts & npm run example",
+    "example": "http-server . -p 9994 --log-ip -c-1 -o example.html"
+  },
+  "devDependencies": {
+    "@abcnews/aunty": "^12.1.2",
+    "@types/latlon-geohash": "^1.1.1",
+    "http-server": "^14.1.0",
+    "tsup": "^5.11.13"
+  },
+  "dependencies": {
+    "latlon-geohash": "^1.1.0",
+    "metaphone": "^1.0.6",
+    "minisearch": "^3.3.0"
+  }
 }
