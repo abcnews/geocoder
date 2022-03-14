@@ -57,7 +57,7 @@
       let query = document.querySelector('input').value;
       if (query === lastQuery) return;
       lastQuery = query;
-      __GEOCODE__.default(query, 10).then(result => {
+      __GEOCODE__.default(query, { limit: 10 }).then(result => {
         console.log(result);
         output.innerHTML = `
           <ol>

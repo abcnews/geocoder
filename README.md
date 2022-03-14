@@ -17,7 +17,7 @@ Function and return type
 ------------------------
 
 ```typescript
-function geocode(input: string, limit: number): Promise<GeocodeResult>
+function geocode(input: string, options?: { limit?: number }): Promise<GeocodeResult>
 
 type GeocodeResult = {
   input: string,
@@ -40,7 +40,7 @@ Example
 ```typescript
 import geocode from 'geocoder';
 
-geocode('114 grey', 5).then(result => console.log(result));
+geocode('114 grey', { limit: 5 }).then(result => console.log(result));
   
 /* 
 Returns addresses:
