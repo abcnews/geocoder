@@ -21,7 +21,6 @@
     "example": "http-server . -p 9994 --log-ip -c-1 -o example.html"
   },
   "devDependencies": {
-    "@abcnews/aunty": "^12.1.2",
     "@types/latlon-geohash": "^1.1.1",
     "http-server": "^14.1.0",
     "tsup": "^5.11.13"

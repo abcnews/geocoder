@@ -18,6 +18,10 @@ export type GeocodeResult = {
   }>;
 };
 
+type GeocodeOptions = {
+  limit?: number;
+};
+
 type SearchIndexDocument = {
   id: number;
   address: string;
@@ -178,7 +182,7 @@ const prettyAddress = (address: string): string => {
   });
 };
 
-export default function geocode(input: string, limit: number): Promise<GeocodeResult> {
+export default function geocode(input: string, options: GeocodeOptions = {}): Promise<GeocodeResult> {
   return new Promise((resolve, reject) => {
     let startTime = Date.now();
     let cleanedInput = input
@@ -250,7 +254,7 @@ export default function geocode(input: string, limit: number): Promise<GeocodeRe
             score: miniSearchResult.score,
             id: doc.id
           });
-          if (result.results.length === limit) {
+          if (result.results.length === options.limit) {
             break; // limit reached
           }
         }

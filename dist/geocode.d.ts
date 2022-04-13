@@ -10,6 +10,9 @@ declare type GeocodeResult = {
         id: number;
     }>;
 };
-declare function geocode(input: string, limit: number): Promise<GeocodeResult>;
+declare type GeocodeOptions = {
+    limit?: number;
+};
+declare function geocode(input: string, options?: GeocodeOptions): Promise<GeocodeResult>;
 
 export { GeocodeResult, geocode as default };
