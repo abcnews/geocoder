@@ -87,7 +87,7 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
     loadGroupData(group)
       .then(data => {
         searchIndexDocuments = [];
-        let id = 1;
+        let id = 0;
         let lines = data.split('\n');
         for (let line of lines) {
           let street: Street;
@@ -113,13 +113,13 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
             let address = addressLines.filter(line => !!line).join(', ');
             // If we have numeric words in the query, index the block if one of the numeric words match the street number or postcode
             // If we do not have numeric words in the query, index the block
-            let indexThisBlock = numericWords.length === 0 || numericWords.some(w => w === block.n || w === street.p);
+            let indexThisBlock = numericWords.length === 0 || numericWords.some(w => w === block.n || w === block.m || w === street.p);
             if (indexThisBlock) {
               searchIndexDocuments[id] = {
                 id,
                 address,
                 geohash: block.g,
-                numericWords: [block.n, street.p]
+                numericWords: block.m ? [block.n, block.m, street.p] : [block.n, street.p],
               };
               id++;
             }
@@ -139,7 +139,7 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
                           id,
                           address: unitType + i + ', ' + address,
                           geohash: block.g,
-                          numericWords: [i, block.n, +street.p]
+                          numericWords: block.m ? [i, block.n, block.m, +street.p] : [i, block.n, +street.p],
                         };
                         id++;
                       }
@@ -149,10 +149,10 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
                     let indexThisUnit = indexThisBlock || numericWords.some(w => w === unitNumber);
                     if (indexThisUnit) {
                       searchIndexDocuments[id] = {
-                        id: id++,
+                        id,
                         address: unitType + unitNumber + ', ' + address,
                         geohash: block.g,
-                        numericWords: [unitNumber, block.n, +street.p]
+                        numericWords: block.m ? [unitNumber, block.n, block.m, +street.p] : [unitNumber, block.n, +street.p],
                       };
                       id++;
                     }
@@ -241,8 +241,9 @@ export default function geocode(input: string, options: GeocodeOptions = {}): Pr
           input,
           duration: 0
         };
+        let highestScoreIsPositive = miniSearchResults[0]?.score > 0;
         for (let miniSearchResult of miniSearchResults) {
-          if (miniSearchResult.score === 0) {
+          if (miniSearchResult.score === 0 && highestScoreIsPositive) {
             break; // stop if we reach useless results
           }
           let doc = searchIndexDocuments[miniSearchResult.id];
