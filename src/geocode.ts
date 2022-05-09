@@ -217,7 +217,7 @@ export default function geocode(input: string, options: GeocodeOptions = {}): Pr
         let miniSearchResults: MiniSearchResult[] = miniSearch.search(input, {
           fuzzy: term => (/\d/.test(term) ? false : 0.333), // disable fuzzy search for words containing numbers
           prefix: term => (/\d/.test(term) ? false : true), // disable prefix search for words containing numbers
-          weights: { fuzzy: 0.8, prefix: 0.9 },
+          weights: { fuzzy: 0.1, prefix: 0.5 },
           filter:
             numericWords.length === 0
               ? undefined
