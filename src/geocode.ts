@@ -113,13 +113,14 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
             let address = addressLines.filter(line => !!line).join(', ');
             // If we have numeric words in the query, index the block if one of the numeric words match the street number or postcode
             // If we do not have numeric words in the query, index the block
-            let indexThisBlock = numericWords.length === 0 || numericWords.some(w => w === block.n || w === block.m || w === street.p);
+            let indexThisBlock =
+              numericWords.length === 0 || numericWords.some(w => w === block.n || w === block.m || w === street.p);
             if (indexThisBlock) {
               searchIndexDocuments[id] = {
                 id,
                 address,
                 geohash: block.g,
-                numericWords: block.m ? [block.n, block.m, street.p] : [block.n, street.p],
+                numericWords: block.m ? [block.n, block.m, street.p] : [block.n, street.p]
               };
               id++;
             }
@@ -139,7 +140,7 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
                           id,
                           address: unitType + i + ', ' + address,
                           geohash: block.g,
-                          numericWords: block.m ? [i, block.n, block.m, +street.p] : [i, block.n, +street.p],
+                          numericWords: block.m ? [i, block.n, block.m, +street.p] : [i, block.n, +street.p]
                         };
                         id++;
                       }
@@ -152,7 +153,9 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
                         id,
                         address: unitType + unitNumber + ', ' + address,
                         geohash: block.g,
-                        numericWords: block.m ? [unitNumber, block.n, block.m, +street.p] : [unitNumber, block.n, +street.p],
+                        numericWords: block.m
+                          ? [unitNumber, block.n, block.m, +street.p]
+                          : [unitNumber, block.n, +street.p]
                       };
                       id++;
                     }
@@ -209,9 +212,18 @@ export default function geocode(input: string, options: GeocodeOptions = {}): Pr
         streetName = firstWord;
       }
     }
-    if (streetName === null) return;
-    let group = getGroup(streetName);
-    if (!group) return;
+    let result: GeocodeResult = {
+      results: [],
+      group: '',
+      input,
+      duration: 0
+    };
+    let group = streetName === null ? null : getGroup(streetName);
+    if (streetName === null || group === null) {
+      result.duration = Date.now() - startTime;
+      resolve(result);
+      return;
+    }
     prepareSearchIndex(group, numericWords)
       .then(() => {
         let miniSearchResults: MiniSearchResult[] = miniSearch.search(input, {
@@ -235,12 +247,6 @@ export default function geocode(input: string, options: GeocodeOptions = {}): Pr
                   return false;
                 }
         });
-        let result: GeocodeResult = {
-          results: [],
-          group: group ?? '',
-          input,
-          duration: 0
-        };
         let highestScoreIsPositive = miniSearchResults[0]?.score > 0;
         for (let miniSearchResult of miniSearchResults) {
           if (miniSearchResult.score === 0 && highestScoreIsPositive) {
