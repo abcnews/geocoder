@@ -46,34 +46,48 @@
 </head>
 <body>
   <div id="container">
-    <div><input type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Enter address" /></div>
+    <div><input type="search" autofocus autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Enter address" /></div>
     <div id="output"></div>
   </div>
   <script>
     let input = document.querySelector('input');
     let output = document.querySelector('#output');
-    let lastQuery = '';
+    let prevQuery = '';
+    let timeout = null;
     function doGeocode() {
-      let query = document.querySelector('input').value;
-      if (query === lastQuery) return;
-      lastQuery = query;
-      __GEOCODE__.default(query, { limit: 10 }).then(result => {
-        console.log(result);
-        output.innerHTML = `
-          <ol>
-            ${result.results.map(r => `
-              <li>
-                <div class="address">${r.address}</div>
-                <div class="details">
-                  <span><a href="https://maps.google.com.au/?q=${r.latitude},${r.longitude}" target="_blank">Map</a></span>
-                  <span>Lat: ${r.latitude}</span> <span>Lon: ${r.longitude}</span>
-                  <span>Score: ${+r.score.toFixed(2)}</span>
-                </div>
-              </li>
-            `).join('\n')}
-          </ol>
-        `;
-      });
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+      timeout = setTimeout(() => {
+        let query = document.querySelector('input').value;
+        if (query === prevQuery) return;
+        prevQuery = query;
+        __GEOCODE__.geocode(query, { limit: 10, abortPrevious: true }).then(result => {
+          console.log(result);
+          output.innerHTML = `
+            <ol>
+              ${result.results.map(r => `
+                <li>
+                  <div class="address">${r.address}</div>
+                  <div class="details">
+                    <span><a href="https://maps.google.com.au/?q=${r.latitude},${r.longitude}" target="_blank">Map</a></span>
+                    <span>Lat: ${r.latitude}</span> <span>Lon: ${r.longitude}</span>
+                    <span>ID: ${r.id}</span>
+                    <span>Score: ${+r.score.toFixed(2)}</span>
+                  </div>
+                </li>
+              `).join('\n')}
+            </ol>
+          `;
+        }).catch(e => {
+          if (e instanceof __GEOCODE__.GeocodeAbortError) {
+            console.log('previous geocode aborted');
+          } else {
+            throw e;
+          }
+        });
+      }, 50);
     }
     doGeocode();
     input.addEventListener('keyup', doGeocode);

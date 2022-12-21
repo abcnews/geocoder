@@ -1,6 +1,6 @@
 {
   "name": "geocoder",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Browser-based geocoder for Australian addresses.",
   "license": "MIT",
   "private": true,
@@ -23,11 +23,12 @@
   "devDependencies": {
     "@types/latlon-geohash": "^1.1.1",
     "http-server": "^14.1.0",
-    "tsup": "^5.11.13"
+    "tsup": "^6.4.0"
   },
   "dependencies": {
     "latlon-geohash": "^1.1.0",
+    "lru_map": "^0.4.1",
     "metaphone": "^1.0.6",
-    "minisearch": "^5.0.0-beta1"
+    "minisearch": "^6.0.0"
   }
 }
