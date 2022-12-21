@@ -1,101 +1,177 @@
 import type { Street } from './types';
-import MiniSearch, { SearchResult as MiniSearchResult } from 'minisearch';
+import MiniSearch from 'minisearch';
 import Geohash from 'latlon-geohash';
+import { LRUMap } from 'lru_map';
 //@ts-ignore - missing types
 import metaphone from 'metaphone';
 declare function metaphone(word: string): string;
 
 export type GeocodeResult = {
   input: string;
-  group: string;
+  results: GeocodeResultItem[];
+  startTime: number; // milliseconds since epoch - e.g. Date.now()
   duration: number; // in milliseconds
-  results: Array<{
-    address: string;
-    latitude: number;
-    longitude: number;
-    score: number;
-    id: number;
-  }>;
+};
+
+type GeocodeResultItem = {
+  address: string;
+  latitude: number;
+  longitude: number;
+  score: number;
+  id: number;
 };
 
 type GeocodeOptions = {
   limit?: number;
+  abortPrevious?: boolean;
 };
 
-type SearchIndexDocument = {
+type AddressSearchDocument = {
   id: number;
   address: string;
+  streetName: string;
   geohash: string;
   numericWords: NumericWord[];
 };
 
 type NumericWord = number | string;
 
-const knownGroups = new Set<string>(require('../groups.json'));
-let currentGroup: string | null = null;
-let currentGroupData: string | null = null;
+// Hash a string to a JavaScript-safe 53-bit integer
+// More info: https://stackoverflow.com/a/52171480
+// Source code: https://github.com/bryc/code/blob/master/jshash/experimental/cyrb53.js
+/*
+    cyrb53 (c) 2018 bryc (github.com/bryc)
+    A fast and simple hash function with decent collision resistance.
+    Largely inspired by MurmurHash2/3, but with a focus on speed/simplicity.
+    Public domain. Attribution appreciated.
+*/
+const cyrb53 = function (str: string, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed,
+    h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch: number; i < str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+};
 
-let fetchController = new AbortController();
+class GeocodeAbortError extends Error {
+  constructor() {
+    super();
+    this.name = 'GeocodeAbortError';
+  }
+}
 
-const miniSearch = new MiniSearch<SearchIndexDocument>({ fields: ['address'] });
-let searchIndexDocuments: SearchIndexDocument[] = [];
-let currentSearchIndexKey: string | null = null;
+const urlBase = new URL('https://www.abc.net.au/res/sites/news-projects/geocoder/data/202208/');
+
+let knownGroupsPromise: Promise<Set<string>> | undefined;
+async function getKnownGroups(): Promise<Set<string>> {
+  if (knownGroupsPromise) {
+    return knownGroupsPromise;
+  }
+  knownGroupsPromise = (async () => {
+    let response = await fetch(new URL(`groups.json.gz`, urlBase).toString());
+    let knownGroups = (await response.json()) as string[];
+    return new Set(knownGroups);
+  })();
+  return knownGroupsPromise;
+}
+
+let streetsPromises = new Map<string, Promise<Street[]>>();
+let streetsAbortControllers = new WeakMap<Promise<Street[]>, AbortController>();
+async function getStreets(group: string): Promise<Street[]> {
+  let streetsPromise = streetsPromises.get(group);
+  if (streetsPromise) {
+    return streetsPromise;
+  }
+  let abortController = new AbortController();
+  streetsPromise = (async (): Promise<Street[]> => {
+    let streets: Street[] = [];
+    let response = await fetch(new URL(`${group}.txt.gz`, urlBase).toString(), {
+      signal: abortController.signal
+    });
+    let reader = response.body?.getReader();
+    let textDecoder = new TextDecoder('utf8');
+    let incompleteJsonFromPreviousChunk = '';
+    let done = false;
+    while (reader && !done) {
+      let r = await reader.read();
+      done = r.done;
+      let chunk = textDecoder.decode(r.value);
+      let text = incompleteJsonFromPreviousChunk + chunk;
+      incompleteJsonFromPreviousChunk = '';
+      let lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        let json = lines[i];
+        try {
+          let street = JSON.parse(json) as Street;
+          streets.push(street);
+        } catch (e: unknown) {
+          if (e instanceof SyntaxError && i === lines.length - 1 && !done) {
+            // Incomplete JSON on last line. Assume rest of JSON is at beginning of next chunk.
+            incompleteJsonFromPreviousChunk = json;
+          } else if (e instanceof SyntaxError && !json) {
+            // Ignore empty line. Caused by complete JSON on last line of previous chunk and newline delimeter at start of this chunk.
+          } else {
+            // Unknown error
+            throw e;
+          }
+        }
+      }
+    }
+    return streets;
+  })();
+  streetsPromises.set(group, streetsPromise);
+  streetsAbortControllers.set(streetsPromise, abortController);
+  return streetsPromise;
+}
+function abortStreets(group: string) {
+  let streetsPromise = streetsPromises.get(group);
+  if (streetsPromise) {
+    let abortController = streetsAbortControllers.get(streetsPromise);
+    if (abortController) {
+      abortController.abort();
+    }
+    streetsPromises.delete(group);
+  }
+}
 
 function getSearchIndexKey(group: string, numericWords: NumericWord[]) {
-  return [group, ...numericWords.sort()].join('|');
+  return [group, ...numericWords.sort()].join(' ');
 }
 
-function getGroup(word: string): string | null {
-  let cleanedWord = word.toUpperCase().replace(/[^A-Z]+/g, '');
-  let group = cleanedWord.substring(0, 1) + metaphone(cleanedWord).substring(0, 3); // first letter followed by metaphone of up to 3 characters
-  return knownGroups.has(group) ? group : null;
-}
-
-function loadGroupData(group: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (group === currentGroup && currentGroupData) {
-      // group hasn't changed and the data is already loaded
-      resolve(currentGroupData);
-      return;
+let searchDocumentsPromise = new LRUMap<string, Promise<AddressSearchDocument[]>>(100);
+async function prepareSearchDocuments(
+  groups: string[],
+  numericWords: NumericWord[],
+  abortPrevious: boolean
+): Promise<AddressSearchDocument[]> {
+  if (abortPrevious) {
+    // cancel pending requests that are no longer needed
+    let groupsToAbort = new Set([...streetsPromises.keys()]);
+    for (let groupToAbort of groupsToAbort) {
+      if (groups.includes(groupToAbort)) {
+        // pending request still needed
+        groupsToAbort.delete(groupToAbort);
+      }
     }
-    fetchController.abort(); // abort any existing requests
-    fetchController = new AbortController();
-    currentGroup = group;
-    let url = `https://www.abc.net.au/res/sites/news-projects/geocoder/data/202111/${group}.txt.gz`;
-    fetch(url, { signal: fetchController.signal })
-      .then(response => {
-        response.text().then(data => {
-          currentGroupData = data;
-          resolve(data);
-        });
-      })
-      .catch(e => {
-        // We expect possible AbortErrors, but other issues should be passed on.
-        if (e.name !== 'AbortError') reject(e);
-      });
-  });
-}
-
-function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let newSearchIndexKey = getSearchIndexKey(group, numericWords);
-    if (newSearchIndexKey === currentSearchIndexKey) {
-      // no need to rebuild search index
-      resolve();
-      return;
+    for (let abortGroup of groupsToAbort) {
+      abortStreets(abortGroup);
     }
-    loadGroupData(group)
-      .then(data => {
-        searchIndexDocuments = [];
-        let id = 0;
-        let lines = data.split('\n');
-        for (let line of lines) {
-          let street: Street;
-          try {
-            street = JSON.parse(line);
-          } catch {
-            continue;
-          }
+  }
+  let allPromises: Array<Promise<AddressSearchDocument[]>> = [];
+  for (let group of groups) {
+    let key = getSearchIndexKey(group, numericWords);
+    let promise = searchDocumentsPromise.get(key);
+    if (!promise) {
+      promise = (async () => {
+        let searchIndex: AddressSearchDocument[] = [];
+        let streets = await getStreets(group);
+        for (let street of streets) {
+          let streetName = street.a.replace(/[^ -\w]/g, '');
           let addressLines: string[] = [
             '', // building
             '', // street
@@ -116,13 +192,13 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
             let indexThisBlock =
               numericWords.length === 0 || numericWords.some(w => w === block.n || w === block.m || w === street.p);
             if (indexThisBlock) {
-              searchIndexDocuments[id] = {
-                id,
+              searchIndex.push({
+                id: cyrb53(address),
                 address,
+                streetName,
                 geohash: block.g,
                 numericWords: block.m ? [block.n, block.m, street.p] : [block.n, street.p]
-              };
-              id++;
+              });
             }
             // If we have numeric words in the query, examine unit numbers in this block
             if (block.u && numericWords.length > 0) {
@@ -136,44 +212,54 @@ function prepareSearchIndex(group: string, numericWords: NumericWord[]): Promise
                     for (let i = unitNumber[0]; i <= unitNumber[1]; i++) {
                       let indexThisUnit = indexThisBlock || numericWords.some(w => w === i);
                       if (indexThisUnit) {
-                        searchIndexDocuments[id] = {
-                          id,
-                          address: unitType + i + ', ' + address,
+                        let unitAndAddress = unitType + i + ', ' + address;
+                        searchIndex.push({
+                          id: cyrb53(unitAndAddress),
+                          address: unitAndAddress,
+                          streetName,
                           geohash: block.g,
                           numericWords: block.m ? [i, block.n, block.m, +street.p] : [i, block.n, +street.p]
-                        };
-                        id++;
+                        });
                       }
                     }
                   } else {
                     // single unit number - e.g. 1 or "1A"
                     let indexThisUnit = indexThisBlock || numericWords.some(w => w === unitNumber);
                     if (indexThisUnit) {
-                      searchIndexDocuments[id] = {
-                        id,
-                        address: unitType + unitNumber + ', ' + address,
+                      let unitAndAddress = unitType + unitNumber + ', ' + address;
+                      searchIndex.push({
+                        id: cyrb53(unitAndAddress),
+                        address: unitAndAddress,
+                        streetName,
                         geohash: block.g,
                         numericWords: block.m
                           ? [unitNumber, block.n, block.m, +street.p]
                           : [unitNumber, block.n, +street.p]
-                      };
-                      id++;
+                      });
                     }
                   }
                 }
               }
             }
           }
-          if (id > 10000) {
-            break; // search index is getting too big - stop here
-          }
         }
-        miniSearch.removeAll();
-        miniSearch.addAll(searchIndexDocuments); // consider using addAllAsync if performance is slow
-        resolve();
-      })
-      .catch(reject);
-  });
+        return searchIndex;
+      })();
+      searchDocumentsPromise.set(group, promise);
+    }
+    allPromises.push(promise);
+  }
+  let combinedSearchIndexDocuments = new Map<number, AddressSearchDocument>();
+  let allResolvedPromises = await Promise.all(allPromises);
+  for (let addressSearchDocuments of allResolvedPromises) {
+    for (let a of addressSearchDocuments) {
+      combinedSearchIndexDocuments.set(a.id, a);
+    }
+    if (combinedSearchIndexDocuments.size > 10000) {
+      break; // search index is getting too big - stop here
+    }
+  }
+  return Array.from(combinedSearchIndexDocuments.values());
 }
 
 const states = new Set(['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT']);
@@ -185,89 +271,101 @@ const prettyAddress = (address: string): string => {
   });
 };
 
-export default function geocode(input: string, options: GeocodeOptions = {}): Promise<GeocodeResult> {
-  return new Promise((resolve, reject) => {
-    let startTime = Date.now();
-    let cleanedInput = input
-      .replace(/'/g, '')
-      .replace(/[^\w\d]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .toUpperCase();
-    let words: NumericWord[] = cleanedInput.split(' ').map(word => (isFinite(+word) ? +word : word));
-    let numericWords: NumericWord[] = [];
-    let streetName: string | null = null; // street name will determine the search group
-    for (let word of words) {
-      let isNumeric = typeof word === 'number' || /\d/.test(word);
-      if (isNumeric) {
-        numericWords.push(word);
-      } else if (streetName === null && typeof word === 'string' && word.length > 3 && numericWords.length > 0) {
-        // first >3 letter word after a numeric word is assumed to be the street name
-        streetName = word;
-      }
-    }
-    if (streetName === null) {
-      // fallback: use first non-numeric word
-      let firstWord = words.find(word => typeof word === 'string' && !/\d/.test(word));
-      if (firstWord && typeof firstWord === 'string') {
-        streetName = firstWord;
-      }
-    }
-    let result: GeocodeResult = {
-      results: [],
-      group: '',
-      input,
-      duration: 0
-    };
-    let group = streetName === null ? null : getGroup(streetName);
-    if (streetName === null || group === null) {
-      result.duration = Date.now() - startTime;
-      resolve(result);
-      return;
-    }
-    prepareSearchIndex(group, numericWords)
-      .then(() => {
-        let miniSearchResults: MiniSearchResult[] = miniSearch.search(input, {
-          fuzzy: term => (/\d/.test(term) ? false : 0.333), // disable fuzzy search for words containing numbers
-          prefix: term => (/\d/.test(term) ? false : true), // disable prefix search for words containing numbers
-          weights: { fuzzy: 0.1, prefix: 0.5 },
-          filter:
-            numericWords.length === 0
-              ? undefined
-              : result => {
-                  let doc = searchIndexDocuments[result.id];
-                  if (doc && doc.numericWords.length > 0) {
-                    for (let inputWord of numericWords) {
-                      for (let docWord of doc.numericWords) {
-                        if (inputWord === docWord) {
-                          return true;
-                        }
-                      }
-                    }
-                  }
-                  return false;
-                }
-        });
-        let highestScoreIsPositive = miniSearchResults[0]?.score > 0;
-        for (let miniSearchResult of miniSearchResults) {
-          if (miniSearchResult.score === 0 && highestScoreIsPositive) {
-            break; // stop if we reach useless results
-          }
-          let doc = searchIndexDocuments[miniSearchResult.id];
-          let g = Geohash.decode(doc.geohash);
-          result.results.push({
-            address: prettyAddress(doc.address),
-            latitude: g.lat,
-            longitude: g.lon,
-            score: miniSearchResult.score,
-            id: doc.id
-          });
-          if (result.results.length === options.limit) {
-            break; // limit reached
-          }
+let currentSearchIndexKey = '';
+let currentSearchIndex: MiniSearch<AddressSearchDocument> | undefined;
+let geocodeCache = new LRUMap<string, GeocodeResultItem[]>(100);
+async function geocode(input: string, options: GeocodeOptions = {}): Promise<GeocodeResult> {
+  let startTime = Date.now();
+  let cleanedInput = input
+    .toUpperCase()
+    .replace(/[^-A-Z0-9\/,\. ]/g, '')
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+  let results = geocodeCache.get(cleanedInput);
+  if (results) {
+    return { input, results, startTime, duration: Date.now() - startTime };
+  }
+  let words: NumericWord[] = cleanedInput.split(' ').map(word => (isFinite(+word) ? +word : word));
+  let normalWords: string[] = [];
+  let numericWords: NumericWord[] = [];
+  words.forEach(word => (typeof word === 'number' || /\d/.test(word) ? numericWords : normalWords).push(word));
+  let numberGroups = new Set<number>(
+    numericWords.map(n => (typeof n === 'number' ? n : +n.replace(/[^\d]/g, '')) % 20)
+  );
+  let groups: Set<string> = new Set();
+  let knownGroups = await getKnownGroups();
+  for (let word of normalWords) {
+    let letter = word.substring(0, 1);
+    let phonetic = metaphone(word);
+    if (numberGroups.size > 0) {
+      let phonetic2 = phonetic.substring(0, 2);
+      for (let n of numberGroups) {
+        let group = [letter, n, phonetic2].join('/');
+        if (knownGroups.has(group)) {
+          groups.add(group);
         }
-        result.duration = Date.now() - startTime;
-        resolve(result);
-      })
-      .catch(reject);
+      }
+    } else {
+      let phonetic3 = phonetic.substring(0, 3);
+      let group = [letter, '_', phonetic3].join('/');
+      if (knownGroups.has(group)) {
+        groups.add(group);
+      }
+    }
+  }
+  let newSearchIndexKey = [...Array.from(groups.values()), ...numericWords].sort().join(' ');
+  if (!currentSearchIndex || currentSearchIndexKey !== newSearchIndexKey) {
+    currentSearchIndexKey = newSearchIndexKey;
+    let documents: AddressSearchDocument[];
+    try {
+      documents = await prepareSearchDocuments(
+        Array.from(groups.values()),
+        numericWords,
+        options.abortPrevious ?? false
+      );
+    } catch (e: unknown) {
+      if (options.abortPrevious && e instanceof DOMException && e.name === 'AbortError') {
+        throw new GeocodeAbortError();
+      } else {
+        throw e; // unexpected error
+      }
+    }
+    currentSearchIndex = new MiniSearch<AddressSearchDocument>({
+      fields: ['address', 'streetName'],
+      storeFields: ['address', 'geohash']
+    });
+    if (documents && currentSearchIndex.documentCount === 0) {
+      currentSearchIndex.addAll(documents);
+    }
+  }
+  results = [];
+  let addressSearchResults = currentSearchIndex.search(input, {
+    fuzzy: term => (/\d/.test(term) ? false : 0.333), // disable fuzzy search for words containing numbers
+    prefix: term => (/\d/.test(term) ? false : true), // disable prefix search for words containing numbers
+    weights: { fuzzy: 0.25, prefix: 0.5 },
+    boost: { streetName: 2 },
+    maxFuzzy: 4
   });
+  let highestScoreIsPositive = addressSearchResults[0]?.score > 0;
+  for (let addressSearchResult of addressSearchResults) {
+    if (addressSearchResult.score === 0 && highestScoreIsPositive) {
+      break; // stop if we reach useless results
+    }
+    let g = Geohash.decode(addressSearchResult['geohash'] as string);
+    results.push({
+      address: prettyAddress(addressSearchResult['address'] as string),
+      latitude: g.lat,
+      longitude: g.lon,
+      score: addressSearchResult.score,
+      id: addressSearchResult.id as number
+    });
+    if (results.length === options.limit) {
+      break; // limit reached
+    }
+  }
+  geocodeCache.set(cleanedInput, results);
+  return { input, results, startTime, duration: Date.now() - startTime };
 }
+
+export default geocode;
+export { geocode, GeocodeAbortError };

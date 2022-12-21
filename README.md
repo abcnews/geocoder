@@ -7,7 +7,7 @@ Browser-based geocoder for Australian addresses.
 Features
 --------
 
-* Based on GNAF (Geocoded National Address File of Australia) database
+* Based on GNAF (Geocoded National Address File of Australia) database version 202208
 * Very fast (e.g. fast enough for search-as-you-type)
 * Fuzzy search (typo tolerant, word prefixes, etc.)
 * Infinitely scalable when served via a CDN
@@ -17,11 +17,11 @@ Function and return type
 ------------------------
 
 ```typescript
-function geocode(input: string, options?: { limit?: number }): Promise<GeocodeResult>
+function geocode(input: string, options?: { limit?: number, abortPrevious?: boolean }): Promise<GeocodeResult>
 
 type GeocodeResult = {
   input: string,
-  group: string,
+  startTime: number,
   duration: number,
   results: Array<{
     address: string,
@@ -33,6 +33,12 @@ type GeocodeResult = {
 }
 ```
 
+Options
+-------
+
+* `limit`: Set to a positive integer to limit results, or leave undefined for no limit. (Default: `undefined`)
+* `abortPrevious`: Set to `true` to abort unresolved calls to geocode() before starting this one. Intended for use with search-as-you-type user interfaces. Will abort pending HTTP requests that are no longer needed, and abort unresolved calls to geocode() by throwing a `GeocodeAbortError`. (Default: `false`)
+
 
 Example
 -------
@@ -40,7 +46,7 @@ Example
 ```typescript
 import geocode from 'geocoder';
 
-geocode('114 grey', { limit: 5 }).then(result => console.log(result));
+geocode('114 grey', { limit: 5, abortPrevious: true }).then(result => console.log(result)).catch(e => console.error(e));
   
 /* 
 Returns addresses:
@@ -82,7 +88,7 @@ See [DATA.md](DATA.md)
 Demo
 ----
 
-https://www.abc.net.au/res/sites/news-projects/geocoder/0.1.0/
+https://www.abc.net.au/res/sites/news-projects/geocoder/0.6.0/
 
 
 Authors
